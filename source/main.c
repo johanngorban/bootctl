@@ -1,53 +1,21 @@
 #include "bcp.h"
-#include <termios.h>
+#include "serial.h"
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <fcntl.h>
-#include <stdio.h>
-#include <stdbool.h>
-
-int serial_port_init(int fd, int speed, int parity, bool blocking) {
-    struct termios tty;
-    if (tcgetattr(fd, &tty) != 0) {
-        printf("Error %d from tcgetattr\n", errno);
-        return -1;
-    }
-
-    cfsetospeed(&tty, speed);
-    cfsetispeed(&tty, speed);
-
-    tty.c_cflag = (tty.c_cflag & ~CSIZE) | CS8;
-    tty.c_iflag &= ~IGNBRK; // Disable break processing
-    tty.c_lflag = 0;        // No signaling char, no echo
-    tty.c_oflag = 0;
-    tty.c_cc[VMIN] = (int) blocking;     // Read doesn't block
-    tty.c_cc[VTIME] = 10;    // 1 seconds read timeout
-
-    tty.c_iflag &= ~(IXON | IXOFF | IXANY);
-    tty.c_cflag |= (CLOCAL | CREAD);
-    tty.c_cflag &= ~(PARENB | PARODD);
-
-    tty.c_cflag |= parity;
-    tty.c_cflag &= ~CSTOPB;
-    tty.c_cflag &= ~CRTSCTS;
-
-    if (tcsetattr(fd, TCSANOW, &tty) != 0) {
-        printf("Error %d from tcsetattr\n", errno);
-        return -1;
-    }
-
-    return 0;
-}
 
 void bcp_response_print(const bcp_response_t *r) {
-    printf("┌─ BCP Response ───────────────────────┐\n");
+    printf("┌─ BCP Response ────────────────────────┐\n");
     printf("│ command  : 0x%02X                       │\n", r->command);
     printf("│ status   : 0x%02X                       │\n", r->status);
-    printf("│ length   : 0x%02X (%d)                  │\n", r->length, r->length);
+    printf("│ length   : 0x%02X                       │\n", r->length);
     printf("│ crc      : 0x%04X                     │\n", r->crc);
-    printf("│ data     :                            │\n");
+    if (r->length > 0) {
+        printf("│ data     :                            │\n");
+    }
+    
 
     for (uint8_t i = 0; i < r->length; i++) {
         if (i % 8 == 0) printf("│   %04X: ", i);
@@ -147,12 +115,15 @@ int main(int argc, char *argv[]) {
 
     serial_port_init(fd, B115200, 0, true);
 
-    bcp_send_request(fd, &request);
+    if (bcp_send_request(fd, &request) < 0) {
+        printf("Error with sending BCP packet\n");
+        return 1;
+    }
     
     bcp_response_t response;
     bcp_response_init(&response);
 
-    if (bcp_get_response(fd, &response) == 0) {
+    if (bcp_get_response(fd, &response) < 0) {
         printf("An error occurred with response\n");
         return 1;
     }
@@ -161,7 +132,7 @@ int main(int argc, char *argv[]) {
 
     uint16_t expected = bcp_response_calculate_crc16(&response);
     if (expected != response.crc) {
-        printf("CRC error: got %02x (%02x expected)", response.crc, expected);
+        printf("CRC error: got %02x (%02x expected)\n", response.crc, expected);
         return 1;
     }
     return 0;

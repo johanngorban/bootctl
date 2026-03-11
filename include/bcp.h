@@ -55,6 +55,6 @@ uint16_t bcp_request_calculate_crc16(const bcp_request_t *request);
 
 uint16_t bcp_response_calculate_crc16(const bcp_response_t *response);
 
-void bcp_send_request(int fd, const bcp_request_t *request);
+int bcp_send_request(int fd, const bcp_request_t *request);
 
-uint8_t bcp_get_response(int fd, bcp_response_t *response);
+int bcp_get_response(int fd, bcp_response_t *response);
